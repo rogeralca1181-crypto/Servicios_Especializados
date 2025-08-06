@@ -8,6 +8,30 @@ from oauth2client.service_account import ServiceAccountCredentials
 import threading
 import schedule
 import time
+import os
+import json
+from oauth2client.service_account import ServiceAccountCredentials
+
+def cargar_datos():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    # Obtener el JSON de credenciales desde variables de entorno
+    creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+    
+    if not creds_json:
+        raise ValueError("ERROR: No se encontró la variable GOOGLE_CREDENTIALS_JSON")
+    
+    # Convertir el string JSON a diccionario
+    creds_dict = json.loads(creds_json)
+    
+    # Usar el diccionario en lugar del archivo
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
+    client = gspread.authorize(creds)
+    sheet = client.open(NOMBRE_HOJA).sheet1
+    data = sheet.get_all_records()
+
+    return pd.DataFrame(data)
 
 # ==============================
 # CONFIGURACIONES
