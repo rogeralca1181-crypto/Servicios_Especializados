@@ -163,3 +163,5 @@ def enviar_mensajes_manual(n_clicks):
 # ==============================
 if __name__ == "__main__":
     app.run_server(host="0.0.0.0", port=8050, debug=True)
+import os
+print("Valor de GOOGLE_CREDENTIALS_JSON:", os.environ.get('GOOGLE_CREDENTIALS_JSON') is not None)
