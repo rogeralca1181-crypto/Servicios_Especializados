@@ -50,7 +50,7 @@ def cargar_datos():
 
         # --- CORRECCIÓN PARA EL GRÁFICO ---
         # Filtrar el DataFrame para incluir solo los estados válidos
-        estados_validos = ["Entregado", "No entregado", "Corrección"]
+        estados_validos = ["Entregado", "No Entregado", "Correccion"]
         if "Estado_Entrega" in df.columns:
             df = df[df["Estado_Entrega"].isin(estados_validos)].copy()
             # Convertir la columna de teléfono a string para evitar problemas de formato
