@@ -18,8 +18,8 @@ NOMBRE_HOJA = "Servicios_Especializados"
 
 # --- IMPORTANTE: CONFIGURACIÓN DE WHATSAPP ---
 # Se recomienda configurar estas credenciales como "Environment Variables" en Render.
-ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "TU_ACCESS_TOKEN_AQUI")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_ID", "TU_PHONE_ID_AQUI")
+ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "aaf9786688b3bfffaf936cf5b7afe3cc")
+PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_ID", "1225507482591128")
 API_VERSION = "v19.0" # Usar una versión reciente de la API
 
 # --- ¡NUEVO! DEBES CONFIGURAR ESTO ---
