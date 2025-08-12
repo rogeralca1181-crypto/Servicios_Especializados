@@ -16,12 +16,20 @@ import os # Importar 'os' para leer variables de entorno
 # Nombre de tu hoja de cálculo en Google Sheets
 NOMBRE_HOJA = "Servicios_Especializados" 
 
-# --- IMPORTANTE ---
-# Se recomienda configurar estas credenciales como "Environment Variables" en Render
-# para mayor seguridad, en lugar de escribirlas directamente en el código.
+# --- IMPORTANTE: CONFIGURACIÓN DE WHATSAPP ---
+# Se recomienda configurar estas credenciales como "Environment Variables" en Render.
 ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "TU_ACCESS_TOKEN_AQUI")
 PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_ID", "TU_PHONE_ID_AQUI")
 API_VERSION = "v19.0" # Usar una versión reciente de la API
+
+# --- ¡NUEVO! DEBES CONFIGURAR ESTO ---
+# 1. Ve a tu cuenta de Meta for Developers > WhatsApp > Message Templates.
+# 2. Crea una plantilla. Por ejemplo, con el nombre "recordatorio_entrega".
+# 3. En el cuerpo (Body) de la plantilla, escribe tu mensaje usando una variable:
+#    "Hola {{1}}, recuerda entregar o corregir tu reporte mensual de actividades. ¡Gracias!"
+# 4. Una vez aprobada, pon el nombre exacto de la plantilla aquí abajo.
+NOMBRE_PLANTILLA_WHATSAPP = "recordatorio_entrega" # Reemplaza con el nombre de tu plantilla
+
 
 # ==============================
 # 1. Conexión a Google Sheets y Carga de Datos
@@ -39,23 +47,18 @@ def cargar_datos():
 
         sheet = client.open(NOMBRE_HOJA).sheet1
         
-        # Usar get_all_values para un control más preciso sobre los datos
         data = sheet.get_all_values()
-        if not data:
-            # Si la hoja está vacía, retornar un DataFrame vacío
+        if not data or len(data) < 2:
             return pd.DataFrame(columns=["Nombre", "Estado_Entrega", "Teléfono"])
             
         headers = data.pop(0)
         df = pd.DataFrame(data, columns=headers)
 
-        # --- CORRECCIÓN PARA EL GRÁFICO ---
-        # Filtrar el DataFrame para incluir solo los estados válidos
-        estados_validos = ["Entregado", "No Entregado", "Correccion"]
+        estados_validos = ["Entregado", "No entregado", "Corrección"]
         if "Estado_Entrega" in df.columns:
             df = df[df["Estado_Entrega"].isin(estados_validos)].copy()
-            # Convertir la columna de teléfono a string para evitar problemas de formato
             if "Teléfono" in df.columns:
-                 df["Teléfono"] = df["Teléfono"].astype(str)
+                 df["Teléfono"] = df["Teléfono"].astype(str).str.strip()
         else:
             print("Error: La columna 'Estado_Entrega' no se encontró en la hoja.")
             return pd.DataFrame(columns=["Nombre", "Estado_Entrega", "Teléfono"])
@@ -81,15 +84,16 @@ def obtener_resumen(df):
 
     resumen = df["Estado_Entrega"].value_counts().reset_index()
     resumen.columns = ["Estado", "Cantidad"]
+    # El filtro ya era correcto: solo toma en cuenta "No entregado" y "Corrección".
     pendientes = df[df["Estado_Entrega"].isin(["No entregado", "Corrección"])]
     return resumen, pendientes
 
 # ==============================
-# 3. Envío de Recordatorios con WhatsApp Cloud API
+# 3. Envío de Recordatorios con WhatsApp Cloud API (VERSIÓN ACTUALIZADA)
 # ==============================
 def enviar_recordatorio(pendientes):
     """
-    Envía un mensaje de recordatorio a cada persona en la lista de pendientes.
+    Envía un mensaje de recordatorio usando una PLANTILLA DE MENSAJE pre-aprobada.
     Retorna el número de mensajes enviados y una lista de errores.
     """
     if pendientes.empty:
@@ -104,22 +108,34 @@ def enviar_recordatorio(pendientes):
     enviados_count = 0
     errores = []
     for _, fila in pendientes.iterrows():
-        # Asegurarse de que las columnas necesarias existan
-        if not all(k in fila for k in ["Nombre", "Teléfono"]):
-            errores.append(f"Fila ignorada por falta de datos: {fila}")
+        if not all(k in fila and fila[k] for k in ["Nombre", "Teléfono"]):
+            errores.append(f"Fila ignorada por falta de datos: {fila.to_dict()}")
             continue
 
+        # --- CAMBIO IMPORTANTE: Payload para usar plantillas ---
         data = {
             "messaging_product": "whatsapp",
             "to": str(fila["Teléfono"]),
-            "type": "text",
-            "text": {
-                "body": f"Hola {fila['Nombre']}, recuerda entregar o corregir tu reporte mensual de actividades. ¡Gracias!"
+            "type": "template",
+            "template": {
+                "name": NOMBRE_PLANTILLA_WHATSAPP,
+                "language": { "code": "es_MX" }, # O el código de tu idioma, ej: "es"
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {
+                                "type": "text",
+                                "text": str(fila["Nombre"])
+                            }
+                        ]
+                    }
+                ]
             }
         }
+        
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
-            # Lanza una excepción para respuestas de error (ej. 400, 401, 500)
             response.raise_for_status()
             enviados_count += 1
         except requests.exceptions.RequestException as e:
@@ -143,30 +159,25 @@ def tarea_programada():
     print(f"Tarea diaria ejecutada. Mensajes enviados: {enviados}. Errores: {len(errores)}")
 
 def iniciar_programacion():
-    # Ejecutar cada día a las 9:00 AM (hora del servidor)
     schedule.every().day.at("09:00").do(tarea_programada)
     while True:
         schedule.run_pending()
         time.sleep(60)
 
-# Lanzar en un hilo separado para no bloquear el dashboard
 threading.Thread(target=iniciar_programacion, daemon=True).start()
 
 # ==============================
 # 5. Dashboard con Dash
 # ==============================
 app = Dash(__name__)
-server = app.server # Exponer el servidor para Render
+server = app.server
 app.title = "Dashboard de Entregas"
 
 app.layout = html.Div(style={'fontFamily': 'Arial, sans-serif', 'padding': '20px'}, children=[
     html.H1("Dashboard de Seguimiento de Entregas", style={"textAlign": "center", "color": "#333"}),
-    
     html.Div(id="live-update-text", style={"textAlign": "center", "marginBottom": "20px"}),
-
     dcc.Graph(id="grafico-pie"),
     dcc.Graph(id="grafico-bar"),
-
     html.Div(style={"textAlign": "center", "marginTop": "30px"}, children=[
         html.Button("Enviar Recordatorios Manualmente", id="btn-recordatorios", n_clicks=0, 
                     style={
@@ -175,8 +186,6 @@ app.layout = html.Div(style={'fontFamily': 'Arial, sans-serif', 'padding': '20px
                     }),
     ]),
     html.Div(id="output-mensaje", style={"marginTop": "20px", "textAlign": "center", "fontWeight": "bold"}),
-
-    # Actualización automática de datos cada 60 segundos
     dcc.Interval(id="intervalo-actualizacion", interval=60*1000, n_intervals=0)
 ])
 
@@ -222,13 +231,12 @@ def enviar_mensajes_manual(n_clicks):
 
     enviados, errores = enviar_recordatorio(pendientes)
     
-    mensaje_exito = f"Se enviaron recordatorios a {enviados} persona(s)."
+    mensaje_exito = f"Se intentó enviar recordatorios a {enviados} persona(s)."
     
     if not errores:
         return html.P(mensaje_exito, style={'color': 'green'})
     else:
-        # Crear una lista de elementos HTML para mostrar los errores
-        elementos_error = [html.P(f"Se completó el envío con {len(errores)} error(es):", style={'color': 'orange'})]
+        elementos_error = [html.P(f"Se completó el proceso con {len(errores)} error(es):", style={'color': 'orange'})]
         for error in errores:
             elementos_error.append(html.P(error, style={'color': 'red', 'fontSize': '12px'}))
         return html.Div([html.P(mensaje_exito)] + elementos_error)
@@ -237,5 +245,4 @@ def enviar_mensajes_manual(n_clicks):
 # Ejecutar la aplicación
 # ==============================
 if __name__ == "__main__":
-    # El modo debug=False es recomendado para producción en Render
     app.run_server(host="0.0.0.0", port=8050, debug=False)
