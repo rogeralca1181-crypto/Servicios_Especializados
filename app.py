@@ -54,7 +54,7 @@ def cargar_datos():
         headers = data.pop(0)
         df = pd.DataFrame(data, columns=headers)
 
-        estados_validos = ["Entregado", "No Entregado", "Correccion"]
+        estados_validos = ["Entregado", "No entregado", "Corrección"]
         if "Estado_Entrega" in df.columns:
             df = df[df["Estado_Entrega"].isin(estados_validos)].copy()
             if "Teléfono" in df.columns:
